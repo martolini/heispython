@@ -86,8 +86,6 @@ class Elevator:
 			if tempFloor != -1:
 				self.currentFloor = tempFloor
 				self.panel.set_floor_indicator(self.currentFloor)
-				print self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, self.currentFloor)
-				print self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, self.currentFloor)
 				if self.orderQueue.has_order_in_floor(self.direction, self.currentFloor) or self.find_direction() != self.direction:
 					self.signals[SIGNAL.SHOULD_STOP] = 1
 				else: self.signals[SIGNAL.SHOULD_STOP] = 0
