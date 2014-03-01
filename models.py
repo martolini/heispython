@@ -119,11 +119,13 @@ class Panel:
 		for index, button in enumerate(INPUT.UP_BUTTONS):
 			if button != -1:
 				if self.get_button_signal(button):
+					self.set_button_lamp(index, OUTPUT.UP_LIGHTS)
 					return Order(OUTPUT.MOTOR_UP, index)
 
 		for index, button in enumerate(INPUT.DOWN_BUTTONS):
 			if button != -1:
 				if self.get_button_signal(button):
+					self.set_button_lamp(index, OUTPUT.IN_LIGHTS)
 					return Order(OUTPUT.MOTOR_DOWN, index)
 
 		for index, button in enumerate(INPUT.IN_BUTTONS):
@@ -133,6 +135,7 @@ class Panel:
 						direction = OUTPUT.MOTOR_DOWN
 					else:
 						direction = OUTPUT.MOTOR_UP
+					self.set_button_lamp(index, OUTPUT.IN_LIGHTS)
 					return Order(direction, index)
 
 
