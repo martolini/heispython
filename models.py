@@ -21,9 +21,9 @@ class DoorTimer:
 	def __init__(self):
 		self.is_finished = False
 
-	def start(self, seconds):
-		self.is_finished = 0
-		Timer(seconds, self.set_finished).start()
+	def start(self):
+		self.is_finished = False
+		Timer(3, self.set_finished).start()
 
 	def set_finished(self):
 		self.is_finished = True
