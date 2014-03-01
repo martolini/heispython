@@ -68,7 +68,7 @@ class Elevator:
 
 			self.currentState = self.nextState
 			self.update_signals()
-			order = self.panel.get_order()
+			order = self.panel.get_order(self.currentFloor)
 			if order:
 				self.orderQueue.add_order(order)
 
