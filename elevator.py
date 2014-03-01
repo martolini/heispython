@@ -52,6 +52,7 @@ class Elevator:
 					self.drive()
 
 				elif self.nextState == STATE.OPEN_DOOR:
+					print "YO KIDS"
 					if self.currentState == STATE.DRIVE:
 						self.stop()
 					self.orderQueue.delete_order_in_floor(self.currentFloor)
