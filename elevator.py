@@ -61,7 +61,7 @@ class Elevator:
 					self.panel.timer.start()
 
 				elif self.nextState == STATE.CLOSE_DOOR:
-					self.set_door_light(0)
+					self.panel.set_door_light(0)
 
 				elif self.nextState == STATE.EMERGENCY_STOP:
 					self.stop()
