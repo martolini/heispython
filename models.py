@@ -1,9 +1,8 @@
-import IO
-from channels import INPUT, OUPTUT
-from enum import Enum
+from IO import io
+from channels import INPUT, OUTPUT
 from threading import Timer
 
-class SIGNAL(Enum):
+class SIGNAL:
 	HAS_ORDERS = 0
 	SHOULD_STOP = 1
 	TIMER_FINISHED = 2
@@ -11,7 +10,7 @@ class SIGNAL(Enum):
 	OBSTRUCTION = 4
 	NUM_SIGNALS = 5
 
-class STATE(Enum):
+class STATE:
 	IDLE = 0
 	DRIVE = 1
 	OPEN_DOOR = 2
@@ -136,7 +135,8 @@ class Panel:
 class OrderQueue:
 	def __init__(self):
 		""" Initializing OrderQueue setting False in every order """
-		self.orders = {OUTPUT.MOTOR_UP: [False * INPUT.NUM_FLOORS], OUTPUT.MOTOR_DOWN: [False * INPUT.NUM_FLOORS]}
+		self.orders = {OUTPUT.MOTOR_UP: [False] * INPUT.NUM_FLOORS, OUTPUT.MOTOR_DOWN: [False] * INPUT.NUM_FLOORS}
+
 
 	def has_orders(self):
 		""" 

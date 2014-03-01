@@ -8,6 +8,11 @@ class Elevator:
 		self.panel = Panel()
 		self.orderQueue = OrderQueue()
 		self.direction = OUTPUT.MOTOR_UP
+		self.currentFloor=1
+		self.currentState = STATE.IDLE
+		self.nextState = STATE.IDLE
+		self.signals = [False] * SIGNAL.NUM_SIGNALS
+		self.NUM_FLOORS = INPUT.NUM_FLOORS
 		self.speed = 100
 		self.drive()
 		self.moving = True
@@ -16,10 +21,6 @@ class Elevator:
 		self.currentFloor = self.panel.get_floor()
 		self.stop()
 		self.moving = False
-		self.currentState = STATE.IDLE
-		self.nextState = STATE.IDLE
-		self.signals = [False * SIGNAL.NUM_SIGNALS]
-		self.NUM_FLOORS = INPUT.NUM_FLOORS
 		self.speed = 300
 
 	def run(self):
@@ -96,11 +97,11 @@ class Elevator:
 	def find_direction(self):
 		if self.direction == OUTPUT.MOTOR_UP:
 			for floor in xrange(self.currentFloor+1, self.NUM_FLOORS):
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN):
+			   if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
 					return OUTPUT.MOTOR_UP
 		else:
 			for floor in xrange(self.currentFloor-1, -1, -1):
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN):
+				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
 					return OUTPUT.MOTOR_DOWN
 		return OUTPUT.MOTOR_UP
 
