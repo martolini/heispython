@@ -62,7 +62,7 @@ class Panel:
 		""" Set button lamp
 		@input floor, light, value
 		"""
-		if floor == self.panel.NUM_FLOORS-1 and light == OUTPUT.UP_LIGHTS or floor == 0 and light == OUTPUT.DOWN_LIGHTS:
+		if floor == INPUT.NUM_FLOORS-1 and light == OUTPUT.UP_LIGHTS or floor == 0 and light == OUTPUT.DOWN_LIGHTS:
 			return
 		io.set_bit(light[floor], value)
 
