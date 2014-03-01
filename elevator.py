@@ -112,7 +112,7 @@ class Elevator:
 			for floor in xrange(self.currentFloor-1, -1, -1):
 				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
 					return OUTPUT.MOTOR_DOWN
-			return OUTPUT.MOTOR_DOWN
+			return OUTPUT.MOTOR_UP
 		return OUTPUT.MOTOR_UP
 
 	def drive(self):
