@@ -71,6 +71,7 @@ class Elevator:
 			order = self.panel.get_order(self.currentFloor)
 			if order:
 				self.orderQueue.add_order(order)
+		self.stop()
 
 
 
