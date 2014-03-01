@@ -104,32 +104,36 @@ class Panel:
 				return floor
 		return -1
 
-	def get_button_signal(self, floor, button):
+	def get_button_signal(self, button):
 		""" Get button signal 
 		@input floor, button (BUTTON_UP, BUTTON_DOWN, BUTTON_COMMAND)
 		"""
-		return io.read_bit(button[floor]).value
+		return io.read_bit(button).value
 
-	def get_orders(self, currentFloor):
+	def get_order(self, currentFloor):
 		""" Return orders
 		@input currentFloor of elevator
 		@return orders (generator)
 		"""
-		for floor in range(0, INPUT.NUM_FLOORS):
-			for button in INPUT.BUTTONS:
-				if button == -1:
-					continue
-				if self.get_button_signal(floor, button):
-					if button in INPUT.UP_BUTTONS:
-						direction = OUTPUT.MOTOR_UP
-					if button in INPUT.DOWN_BUTTONS:
-						direction = OUTPUT.MOTOR_DOWN
-					if button in INPUT.IN_BUTTONS:
-						if floor < currentFloor:
-							direction = OUTPUT.MOTOR_DOWN
-						else: direction = OUTPUT.MOTOR_UP
 
-					yield Order(direction=direction, floor=floor)
+		for index, button in enumerate(INPUT.UP_BUTTONS):
+			if button != -1:
+				if self.get_button_signal(button):
+					return Order(OUTPUT.MOTOR_UP, index)
+
+		for index, button in enumerate(INPUT.DOWN_BUTTONS):
+			if button != -1:
+				if self.get_button_signal(button):
+					return Order(OUTPUT.MOTOR_DOWN, index)
+
+		for index, button in enumerate(INPUT.IN_BUTTONS):
+			if button != -1:
+				if self.get_button_signal(button):
+					if index < currentFloor:
+						direction = OUTPUT.MOTOR_DOWN
+					else:
+						direction = OUTPUT.MOTOR_UP
+					return Order(direction, index)
 
 
 class OrderQueue:

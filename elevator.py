@@ -24,7 +24,7 @@ class Elevator:
 		self.speed = 300
 
 	def run(self):
-		while True:
+		while not self.panel.get_stop_signal():
 			self.nextState = self.currentState
 
 			if self.currentState == STATE.IDLE:
@@ -65,6 +65,12 @@ class Elevator:
 
 				elif self.nextState == STATE.EMERGENCY_STOP:
 					self.stop()
+
+			self.currentState = self.nextState
+			self.update_signals()
+			order = self.panel.get_order()
+			if order:
+				self.orderQueue.add_order(order)
 
 
 
