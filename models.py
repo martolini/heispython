@@ -125,7 +125,7 @@ class Panel:
 		for index, button in enumerate(INPUT.DOWN_BUTTONS):
 			if button != -1:
 				if self.get_button_signal(button):
-					self.set_button_lamp(index, OUTPUT.IN_LIGHTS, 1)
+					self.set_button_lamp(index, OUTPUT.DOWN_LIGHTS, 1)
 					return Order(OUTPUT.MOTOR_DOWN, index)
 
 		for index, button in enumerate(INPUT.IN_BUTTONS):
