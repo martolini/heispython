@@ -25,6 +25,7 @@ class SignalPoller(Thread):
 				value = io.read_bit(channel)
 				if value != self.callbacks[channel]['lastval']:
 					self.callbacks[channel]['callback']()
+					self.callbacks[channel]['lastvalue'] = value
 
 	def stop(self):
 		self.running = False

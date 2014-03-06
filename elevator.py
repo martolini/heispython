@@ -8,6 +8,9 @@ class Elevator:
 		self.signalPoller = SignalPoller()
 		self.direction = OUTPUT.MOTOR_DOWN
 		self.moving = False
+		for light in OUTPUT.LIGHTS:
+			if light != -1:
+				io.set_bit(light, 0)
 
 	def set_floor_callbacks(self):
 		""" Decide what will happen when floor changes """
