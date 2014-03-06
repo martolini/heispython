@@ -37,14 +37,14 @@ class IO:
 
 	def write_analog(self, channel, value):
 		if comedi_data_write(self.it_g, channel >> 8, channel & 0xff, 0, AREF_GROUND, value) < 0:
-			raise IOException("Could not write value %d to channel %d" % (value, channel))
+			raise IOException("Cosdsdsduld not write value %d to channel %d" % (value, channel))
 
 	def read_bit(self, channel):
 		data = lsampl_t()
 		retval = comedi_dio_read(self.it_g, channel >> 8, channel & 0xff, byref(data))
 		if retval < 0:
 			raise IOException("Could not read from channel %d" % channel)
-		return data
+		return data.value
 
 	def read_analog(self, channel):
 		data = lsampl_t()

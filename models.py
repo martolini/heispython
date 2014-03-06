@@ -18,14 +18,16 @@ class STATE:
 	EMERGENCY_STOP = 4
 
 class DoorTimer:
-	def __init__(self):
+	def __init__(self, callback, seconds):
 		self.is_finished = False
+		self.callback = callback
 
 	def start(self):
 		self.is_finished = False
 		Timer(3, self.set_finished).start()
 
 	def set_finished(self):
+		self.callback()
 		self.is_finished = True
 
 
@@ -143,6 +145,9 @@ class OrderQueue:
 	def __init__(self):
 		""" Initializing OrderQueue setting False in every order """
 		self.orders = {OUTPUT.MOTOR_UP: [False] * INPUT.NUM_FLOORS, OUTPUT.MOTOR_DOWN: [False] * INPUT.NUM_FLOORS}
+
+	def __str__(self):
+		return self.orders
 
 
 	def has_orders(self):
