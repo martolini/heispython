@@ -8,6 +8,7 @@ MESSAGE = "I'M ALIVE"
 # SOCK_DGRAM is the socket type to use for UDP sockets
 sock = socket(AF_INET, SOCK_DGRAM)
 sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 sock.setblocking(0)
 sock.bind((HOST, PORT))
 
