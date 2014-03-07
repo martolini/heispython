@@ -18,7 +18,7 @@ elevators = []
 
 while True:
 	print "sending message"
-	sock.sendto(MESSAGE, (HOST, PORT))
+	sock.sendto(MESSAGE, ('<broadcast>', PORT))
 	while True:
 		print "waiting for received"
 		r, _, _ = select.select([sock], [], [])
