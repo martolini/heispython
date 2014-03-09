@@ -4,13 +4,15 @@ from functools import partial
 from IO import io
 from models import OrderQueue, Order, DoorTimer
 from time import sleep
+from networkhandler import NetworkHandler
+from threading import active_count
 
 
 class Elevator:
 	def __init__(self):
 		self.signalPoller = SignalPoller()
+		self.networkHandler = NetworkHandler()
 		self.orderQueue = OrderQueue()
-		
 		self.doorTimer = DoorTimer(self.close_door, 3)
 		self.set_floor_callbacks()
 		self.set_button_callbacks()
@@ -21,13 +23,17 @@ class Elevator:
 			if light != -1:
 				io.set_bit(light, 0)
 		self.signalPoller.start()
+		self.networkHandler.start()
 		self.drive()
 
 	def stop(self):
-		""" Stop EVERYTHING """
+		""" Stops EVERYTHING """
 		self.stop_elevator()
-		self.signalPoller.interrupt = True
-		self.signalPoller.join()
+		# self.signalPoller.interrupt = True
+		# self.signalPoller.join()
+		# self.networkHandler.stop()
+		# self.networkHandler.join()
+		print "# threads: ", active_count()
 
 
 	def set_floor_callbacks(self):
@@ -54,9 +60,9 @@ class Elevator:
 		self.set_button_lamp(floor, OUTPUT.DOWN_LIGHTS, 0)
 		self.set_button_lamp(floor, OUTPUT.IN_LIGHTS, 0)
 
-	def floor_indicator_callback(self, floor):
-		""" Handle floor is reached
-		@input floor"""
+	def set_floor_lights(self, floor):
+		""" Switching the floor indicators
+		@input floor """
 		if floor & 0x01:
 			io.set_bit(OUTPUT.FLOOR_IND1, 1)
 		else:
@@ -65,6 +71,11 @@ class Elevator:
 			io.set_bit(OUTPUT.FLOOR_IND2, 1)
 		else:
 			io.set_bit(OUTPUT.FLOOR_IND2, 0)
+
+	def floor_indicator_callback(self, floor):
+		""" Handle floor is reached
+		@input floor"""
+
 		self.currentFloor = floor
 		if not self.orderQueue.has_orders():
 			self.stop_elevator()
@@ -77,6 +88,7 @@ class Elevator:
 	def button_pressed_callback(self, button_type, floor):
 		""" Handle button is pressed
 		@input button_type, floor"""
+		self.networkHandler.test()
 		if floor == self.currentFloor:
 			print "Tried to go to the same floor"
 			return
@@ -95,22 +107,22 @@ class Elevator:
 		self.orderQueue.add_order(order)
 		self.should_drive()
 
-	def get_next_order(self):
-		if self.direction == OUTPUT.MOTOR_UP:
-			for floor in xrange(self.currentFloor+1, INPUT.NUM_FLOORS):
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor):
-					return Order(OUTPUT.MOTOR_UP, floor)
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
-					return Order(OUTPUT.MOTOR_DOWN, floor)
-			return None
-		else:
-			for floor in xrange(self.currentFloor-1, -1, -1):
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor):
-					return Order(OUTPUT.MOTOR_UP, floor)
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
-					return Order(OUTPUT.MOTOR_DOWN, floor)
-			return None
-		return None
+	# def get_next_order(self):
+	# 	if self.direction == OUTPUT.MOTOR_UP:
+	# 		for floor in xrange(self.currentFloor+1, INPUT.NUM_FLOORS):
+	# 			if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor):
+	# 				return Order(OUTPUT.MOTOR_UP, floor)
+	# 			if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
+	# 				return Order(OUTPUT.MOTOR_DOWN, floor)
+	# 		return None
+	# 	else:
+	# 		for floor in xrange(self.currentFloor-1, -1, -1):
+	# 			if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor):
+	# 				return Order(OUTPUT.MOTOR_UP, floor)
+	# 			if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
+	# 				return Order(OUTPUT.MOTOR_DOWN, floor)
+	# 		return None
+	# 	return None
 
 	def find_direction(self):
 		""" Returns the direction in which the elevator should move"""

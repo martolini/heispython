@@ -8,6 +8,7 @@ class SignalPoller(Thread):
 
 	def __init__(self):
 		super(SignalPoller, self).__init__()
+		self.daemon = True
 		self.callbacks = {}
 		self.interrupt = False
 		self.frequency = 10.0
