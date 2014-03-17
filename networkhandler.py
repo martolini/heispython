@@ -54,7 +54,7 @@ class NetworkReceiver():
 
 	def handle_message(self, message):
 		message, (ip, port) = message
-		print message
+		print message, (ip, port)
 		
 
 class NetworkSender(Thread):
@@ -74,5 +74,11 @@ class NetworkSender(Thread):
 			self.sock.sendto("IM ALIVE", (self.MCAST_GROUP, self.MCAST_PORT))
 			sleep(0.5)
 		print "sender out of loop"
+
+if __name__ == '__main__':
+	a = NetworkHandler()
+	a.start()
+	while True:
+		pass
 
 
