@@ -1,6 +1,13 @@
 from IO import io
 from channels import INPUT, OUTPUT
 from threading import Timer
+import json
+from copy import deepcopy
+
+class ORDERDIR:
+	UP = 0
+	DOWN = 1
+	IN = 2
 
 class SIGNAL:
 	HAS_ORDERS = 0
@@ -18,17 +25,18 @@ class STATE:
 	EMERGENCY_STOP = 4
 
 class DoorTimer:
-	def __init__(self, callback, seconds):
-		self.is_finished = False
+	def __init__(self, callback, callbackQueue):
+		self.is_finished = True
 		self.callback = callback
+		self.callbackQueue = callbackQueue
 
 	def start(self):
 		self.is_finished = False
 		Timer(3, self.set_finished).start()
 
 	def set_finished(self):
-		self.callback()
 		self.is_finished = True
+		self.callbackQueue.put(self.callback)
 
 
 
@@ -36,6 +44,18 @@ class Order:
 	def __init__(self, direction, floor):
 		self.direction = direction
 		self.floor = floor
+
+	def __str__(self):
+		return "direction: %d, floor: %d" % (self.direction, self.floor)
+
+class OrderSerializer:
+	@staticmethod
+	def serialize(order):
+		return {'direction': order.direction, 'floor': order.floor, 'id': int('%s%s' % (order.floor, order.direction))}
+
+	@staticmethod
+	def deserialize(object):
+		return Order(direction=object['direction'], floor=object['floor'])
 
 class Panel:
 	def __init__(self):
@@ -140,15 +160,13 @@ class Panel:
 					self.set_button_lamp(index, OUTPUT.IN_LIGHTS, 1)
 					return Order(direction, index)
 
-
 class OrderQueue:
 	def __init__(self):
 		""" Initializing OrderQueue setting False in every order """
-		self.orders = {OUTPUT.MOTOR_UP: [False] * INPUT.NUM_FLOORS, OUTPUT.MOTOR_DOWN: [False] * INPUT.NUM_FLOORS}
+		self.orders = {ORDERDIR.UP: [False] * INPUT.NUM_FLOORS, ORDERDIR.DOWN: [False] * INPUT.NUM_FLOORS, ORDERDIR.IN: [False] * INPUT.NUM_FLOORS}
 
-	def __str__(self):
-		return self.orders
-
+	def get_copy(self):
+		return deepcopy(self.orders)#deepcopy({k:v for k, v in self.orders.items() if k != 2})
 
 	def has_orders(self):
 		""" 
@@ -170,7 +188,7 @@ class OrderQueue:
 			floors[floor] = False
 
 	def has_order_in_floor(self, direction, floor):
-		return self.orders[direction][floor]
+		return self.orders[direction][floor] or self.orders[ORDERDIR.IN][floor]
 
 	def delete_all_orders(self):
 		for direction, floors in self.orders.items():

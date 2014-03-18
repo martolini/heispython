@@ -6,12 +6,13 @@ from IO import io
 
 class SignalPoller(Thread):
 
-	def __init__(self):
+	def __init__(self, callbackQueue):
 		super(SignalPoller, self).__init__()
 		self.daemon = True
+		self.callbackQueue = callbackQueue
 		self.callbacks = {}
 		self.interrupt = False
-		self.frequency = 10.0
+		self.frequency = 100.0
 
 	def add_callback_to_channel(self, channel, callback):
 		""" Fires the callback when the value on the channel changes """
@@ -25,5 +26,6 @@ class SignalPoller(Thread):
 				if channel != -1:
 					value = io.read_bit(channel)
 					if value == 1 and value != self.callbacks[channel]['lastval']:
-						self.callbacks[channel]['callback']()
+						#self.callbacks[channel]['callback']()
+						self.callbackQueue.put(self.callbacks[channel]['callback'])
 					self.callbacks[channel]['lastval'] = value
