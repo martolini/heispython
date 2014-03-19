@@ -98,8 +98,7 @@ class Elevator:
 			io.set_bit(OUTPUT.FLOOR_IND2, 0)
 
 	def received_order(self, order):
-		if not self.moving and order.floor == self.currentFloor:
-			return
+		print 'received order'
 		self.orderQueue.add_order(order)
 		self.update_and_send_elevator_info()
 		self.should_drive()
@@ -109,13 +108,7 @@ class Elevator:
 		@input floor"""
 		self.set_floor_lights(floor)
 		self.currentFloor = floor
-		if not self.orderQueue.has_orders():
-			self.stop_elevator()
-		elif self.orderQueue.has_order_in_floor(self.direction, floor) or self.direction != self.find_direction():
-			self.orderQueue.delete_order_in_floor(floor)
-			self.stop_elevator()
-			self.open_door()
-		self.update_and_send_elevator_info()
+		self.should_stop()
 
 
 	def button_pressed_callback(self, orderdir, floor):
@@ -124,9 +117,6 @@ class Elevator:
 		order = Order(orderdir, floor)
 		if order.direction == ORDERDIR.IN:
 			self.received_order(order)
-			return
-		if floor == self.currentFloor and not self.moving:
-			print "Tried to go to the same floor"
 			return
 		self.newOrderQueue.put(order)
 
@@ -151,11 +141,6 @@ class Elevator:
 		io.write_analog(OUTPUT.MOTOR, 2048+4*abs(300))
 		self.moving = True
 
-	def should_drive(self):
-		if not self.orderQueue.has_orders:
-			return
-		self.drive()
-
 	def stop_elevator(self):
 		""" Stop the elevator """
 		if not self.moving:
@@ -177,8 +162,21 @@ class Elevator:
 		print "closing door"
 		self.should_drive()
 
+	def should_stop(self):
+		if not self.orderQueue.has_orders():
+			self.stop_elevator()
+		elif self.orderQueue.has_order_in_floor(self.direction, self.currentFloor) or self.direction != self.find_direction():
+			self.orderQueue.delete_order_in_floor(self.currentFloor)
+			self.update_and_send_elevator_info()
+			self.stop_elevator()
+			self.open_door()
+
 	def should_drive(self):
-		if self.orderQueue.has_orders() and not self.moving and self.doorTimer.is_finished:
+		print self.orderQueue.orders
+		if self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_DOWN, floor=self.currentFloor):
+			self.orderQueue.delete_order_in_floor(self.currentFloor)
+			self.open_door()
+		elif self.orderQueue.has_orders() and not self.moving and self.doorTimer.is_finished:
 			self.drive()
 
 	def will_stop(self):

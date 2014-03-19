@@ -4,12 +4,13 @@ from time import sleep
 import struct
 import select
 import json
-from models import Order, OrderSerializer, OrderQueue
+from models import Order, OrderQueue
 from random import randint, choice
 from Queue import Queue
 from functools import partial
+from channels import INPUT, OUTPUT
+import time
 
-orderQueue = OrderQueue()
 class NetworkHandler(Thread):
 	""" Handling all the network interaction. Receiving messages on its main thread, and spawns a listening thread"""
 	def __init__(self):
@@ -65,26 +66,71 @@ class NetworkReceiver():
 	def determine_cost(self, order, value):
 		direction = int(value['direction'])
 		currentFloor = int(value['currentFloor'])
-		orderQueue = value['orderQueue']
+		orderQueue = OrderQueue.deserialize(value['orderQueue'])
+		orderweight = 5
+		floorweight = 1
+		cost = 0
+		if orderQueue.has_order_in_floor(direction=order.direction, floor=order.floor):
+			return -1
+		if not orderQueue.has_orders():
+			return abs(currentFloor-order.floor)
+		if direction == OUTPUT.MOTOR_UP:
+			for floor in range(currentFloor+1, INPUT.NUM_FLOORS):
+				if floor == order.floor and direction == order.direction and not orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_DOWN, floor=floor):
+					cost+=floorweight
+					break
+				cost += floorweight + orderQueue.has_order_in_floor(direction=direction, floor=floor)*orderweight
+			if floor != order.floor:
+				cost -= floorweight
+				for floor in range(floor, order.floor, -1):
+					cost += floorweight +orderQueue.has_order_in_floor(direction=order.direction, floor=floor)*orderweight
 
-		cost = abs(order.floor - currentFloor)
+		else:
+			for floor in range(currentFloor-1, -1, -1):
+				if floor == order.floor and direction == order.direction:
+					cost+=floorweight
+					break
+				cost += floorweight + orderQueue.has_order_in_floor(direction=direction, floor=floor)*orderweight
+			if floor != order.floor:
+				cost -= floorweight
+				for floor in range(floor, currentFloor):
+					cost += floorweight + orderQueue.has_order_in_floor(direction=order.direction, floor=floor)*orderweight
+
+
 		return cost
+
+	def handle_new_elevator(self, message, ip):
+		if ip not in self.elevators:
+			print 'NEW ELEVATOR WITH IP %s DISCOVERED' % ip
+		self.elevators[ip] = message
 		
+	def handle_timeouts(self):
+		for ip, message in self.elevators.items():
+			if 'timestamp' not in message:
+				message['timestamp'] = time.time()
+			timestamp = message['timestamp']
+			if time.time() - timestamp > 1:
+				del self.elevators[ip] # BROADCAST ORDERS
+				print 'DELETED ELEVATOR WITH IP %s' % ip
 
 	def handle_message(self, message):
 		message, (ip, port) = message
 		message = json.loads(message)
+		self.handle_new_elevator(message, ip)
+		self.handle_timeouts()
 		self.elevators[ip] = message
+		self.elevators[ip]['timestamp'] = time.time()
 		newOrders = message['newOrders']
 		for order in newOrders:
-			order = OrderSerializer.deserialize(order)
+			order = Order.deserialize(order)
 			scores = {}
 			for ip, value in self.elevators.items():
 				scores[ip] = self.determine_cost(order, value)
 			best = min(scores, key=scores.get)
-			if self.ip == best:
+			if self.ip == best and scores[best] >= 0:
 				self.callbackQueue.put(partial(self.addOrderCallback, order))
-		print message
+				print "%s is taking this order with cost %d" % (self.ip, scores[best])
+		#print message
 
 
 
@@ -92,7 +138,7 @@ class NetworkSender(Thread):
 
 	def __init__(self):
 		super(NetworkSender, self).__init__()
-		self.elevatorInfo = {'orderQueue': {0: [False, False, False, False], 1: [False, False, False, False]}}
+		self.elevatorInfo = None
 		self.newOrderQueue = None
 		self.message = {'newOrders': []}
 		self.MCAST_GROUP = "224.1.1.1"
@@ -103,9 +149,11 @@ class NetworkSender(Thread):
 		self.daemon = True
 
 	def build_message(self):
-		self.message.update(self.elevatorInfo)
+		self.message['direction'] = self.elevatorInfo['direction']
+		self.message['currentFloor'] = self.elevatorInfo['currentFloor']
+		self.message['orderQueue'] = OrderQueue.serialize(self.elevatorInfo['orderQueue'])
 		try:
-			order = OrderSerializer.serialize(self.newOrderQueue.get_nowait())
+			order = Order.serialize(self.newOrderQueue.get_nowait())
 			self.message['newOrders'].append(order)
 			Timer(1, self.remove_order, (order, )).start()
 		except:
@@ -119,8 +167,13 @@ class NetworkSender(Thread):
 		""" Sending status messages over the network """
 		while not self.interrupt:
 			sleep(0.1)
-			self.sock.sendto(self.build_message(), (self.MCAST_GROUP, self.MCAST_PORT))
+			try:
+				self.sock.sendto(self.build_message(), (self.MCAST_GROUP, self.MCAST_PORT))
+			except:
+				print 'NO NETWORK, sleeping for 5 second'
+				sleep(5)
 		print "sender out of loop"
+
 if __name__ == '__main__':
 	a = NetworkHandler()
 	a.start()

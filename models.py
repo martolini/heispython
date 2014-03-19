@@ -29,13 +29,18 @@ class DoorTimer:
 		self.is_finished = True
 		self.callback = callback
 		self.callbackQueue = callbackQueue
+		self.timer = Timer(3, self.set_finished)
 
 	def start(self):
+		if not self.is_finished:
+			self.timer.cancel()
+			self.timer = Timer(3, self.set_finished)
 		self.is_finished = False
-		Timer(3, self.set_finished).start()
+		self.timer.start()
 
 	def set_finished(self):
 		self.is_finished = True
+		self.timer = Timer(3, self.set_finished)
 		self.callbackQueue.put(self.callback)
 
 
@@ -45,10 +50,6 @@ class Order:
 		self.direction = direction
 		self.floor = floor
 
-	def __str__(self):
-		return "direction: %d, floor: %d" % (self.direction, self.floor)
-
-class OrderSerializer:
 	@staticmethod
 	def serialize(order):
 		return {'direction': order.direction, 'floor': order.floor, 'id': int('%s%s' % (order.floor, order.direction))}
@@ -56,6 +57,9 @@ class OrderSerializer:
 	@staticmethod
 	def deserialize(object):
 		return Order(direction=object['direction'], floor=object['floor'])
+
+	def __str__(self):
+		return "direction: %d, floor: %d" % (self.direction, self.floor)
 
 class Panel:
 	def __init__(self):
@@ -161,12 +165,27 @@ class Panel:
 					return Order(direction, index)
 
 class OrderQueue:
-	def __init__(self):
+	def __init__(self, orders=None):
 		""" Initializing OrderQueue setting False in every order """
-		self.orders = {ORDERDIR.UP: [False] * INPUT.NUM_FLOORS, ORDERDIR.DOWN: [False] * INPUT.NUM_FLOORS, ORDERDIR.IN: [False] * INPUT.NUM_FLOORS}
+		if orders:
+			self.orders = orders
+		else:
+			self.orders = {ORDERDIR.UP: [False] * INPUT.NUM_FLOORS, ORDERDIR.DOWN: [False] * INPUT.NUM_FLOORS, ORDERDIR.IN: [False] * INPUT.NUM_FLOORS}
+
+
+	@staticmethod
+	def serialize(obj):
+		return obj.orders
+
+	@staticmethod
+	def deserialize(orders):
+		try:
+			return OrderQueue(orders={int(k):v for k, v in orders.items()})
+		except:
+			raise ValueError("WRONG ORDERQUEUE")
 
 	def get_copy(self):
-		return deepcopy(self.orders)#deepcopy({k:v for k, v in self.orders.items() if k != 2})
+		return deepcopy(self)#deepcopy({k:v for k, v in self.orders.items() if k != 2})
 
 	def has_orders(self):
 		""" 
@@ -193,6 +212,8 @@ class OrderQueue:
 	def delete_all_orders(self):
 		for direction, floors in self.orders.items():
 			floors[floor] = False
+
+
 
 
 
