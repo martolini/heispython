@@ -1,4 +1,7 @@
 class INPUT:
+	"""
+	Owns all the input ports and values
+	"""
 	PORT4          = 3
 	OBSTRUCTION    = 0x300+23
 	STOP           = 0x300+22
@@ -33,6 +36,9 @@ class INPUT:
 	NUM_FLOORS = len(SENSORS)
 
 class OUTPUT:
+	"""
+	Owns all the outpot ports and values
+	"""
 	PORT3          = 3
 	MOTORDIR       = 0x300+15
 	LIGHT_STOP     = 0x300+14
@@ -63,6 +69,6 @@ class OUTPUT:
 	DOWN_LIGHTS = [LIGHT_DOWN1, LIGHT_DOWN2, LIGHT_DOWN3, LIGHT_DOWN4]
 	IN_LIGHTS = [LIGHT_COMMAND1, LIGHT_COMMAND2, LIGHT_COMMAND3, LIGHT_COMMAND4]
 	FLOOR_LIGHTS = [FLOOR_IND1, FLOOR_IND2]
-	LIGHTS = UP_LIGHTS + DOWN_LIGHTS + IN_LIGHTS
+	LIGHTS = UP_LIGHTS + DOWN_LIGHTS + IN_LIGHTS + [DOOR_OPEN] + [LIGHT_STOP]
 
 	ALL = LIGHTS + [MOTOR, MOTORDIR]

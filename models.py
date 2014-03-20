@@ -3,26 +3,14 @@ from channels import INPUT, OUTPUT
 from threading import Timer
 import json
 from copy import deepcopy
+import pickle
+from os.path import isfile
+
 
 class ORDERDIR:
 	UP = 0
 	DOWN = 1
 	IN = 2
-
-class SIGNAL:
-	HAS_ORDERS = 0
-	SHOULD_STOP = 1
-	TIMER_FINISHED = 2
-	EMERGENCY_STOP = 3
-	OBSTRUCTION = 4
-	NUM_SIGNALS = 5
-
-class STATE:
-	IDLE = 0
-	DRIVE = 1
-	OPEN_DOOR = 2
-	CLOSE_DOOR = 3
-	EMERGENCY_STOP = 4
 
 class DoorTimer:
 	def __init__(self, callback, callbackQueue):
@@ -175,20 +163,30 @@ class OrderQueue:
 
 	@staticmethod
 	def serialize(obj):
+		"""
+		Serializing itself
+		"""
 		return obj.orders
 
 	@staticmethod
 	def deserialize(orders):
+		"""
+		Deserializing an orderobject
+		@input orders (serialized object)
+		@return Object
+		"""
 		try:
 			return OrderQueue(orders={int(k):v for k, v in orders.items()})
 		except:
 			raise ValueError("WRONG ORDERQUEUE")
 
 	def get_copy(self):
-		return deepcopy(self)#deepcopy({k:v for k, v in self.orders.items() if k != 2})
+		""" Returns a copy of itself """
+		return deepcopy(self)
 
 	def has_orders(self):
 		""" 
+		Determines whether the queue has any orders
 		@return true, false
 		"""
 		for key, val in self.orders.items():
@@ -197,21 +195,61 @@ class OrderQueue:
 		return False
 
 	def add_order(self, order):
-		""" Adding order to OrderQueue
+		"""
+		Adding order to OrderQueue
 		@input order (Order)
 		"""
 		self.orders[order.direction][order.floor] = True
 
 	def delete_order_in_floor(self, floor):
+		"""
+		Deleting an order in a certain floor
+		@input floor
+		"""
 		for direction, floors in self.orders.items():
 			floors[floor] = False
 
 	def has_order_in_floor(self, direction, floor):
+		"""
+		Returns if the queue has order in a floor in a certain direction or inner order
+		@input direction, floor
+		@return true, false
+		"""
 		return self.orders[direction][floor] or self.orders[ORDERDIR.IN][floor]
 
-	def delete_all_orders(self):
+	def delete_all_orders(self, exclude=None):
+		"""
+		Deletes all orders
+		"""
 		for direction, floors in self.orders.items():
-			floors[floor] = False
+			if direction == exclude:
+				continue
+			for floor in range(len(floors)):
+				floors[floor] = False
+
+	def yield_orders(self, exclude=(ORDERDIR.IN,)):
+		"""
+		Yielding all orders
+		@return generator of Orders
+		"""
+		for direction, floors in self.orders.items():
+			if direction in exclude:
+				continue
+			for floor in range(len(floors)):
+				if floors[floor]:
+					yield Order(direction, floor)
+
+	def save_to_file(self):
+		orderQueue = self.get_copy()
+		with open('orderqueue.backup', 'w+') as wfile:
+			pickle.dump(orderQueue, wfile)
+	@staticmethod
+	def load_from_file():
+		if not isfile('orderqueue.backup'):
+			return OrderQueue()
+		with open('orderqueue.backup', 'r') as rfile:
+			orderQueue = pickle.load(rfile)
+			return orderQueue if orderQueue else OrderQueue()
 
 
 

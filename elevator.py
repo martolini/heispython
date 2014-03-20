@@ -8,24 +8,19 @@ from networkhandler import NetworkHandler
 from threading import active_count, current_thread
 from Queue import Queue
 
-
 class Elevator:
 	def __init__(self):
 		self.interrupt = False
+		self.orderQueue = OrderQueue.load_from_file()
+		self.initialize_lights()
 		self.callbackQueue = Queue()
 		self.signalPoller = SignalPoller(self.callbackQueue)
-		self.orderQueue = OrderQueue()
 		self.newOrderQueue = Queue()
 		self.doorTimer = DoorTimer(self.close_door, self.callbackQueue)
 		self.direction = OUTPUT.MOTOR_DOWN
 		self.moving = False
 		self.currentFloor = -1
-		for light in OUTPUT.LIGHTS:
-			if light != -1:
-				io.set_bit(light, 0)
-		self.networkHandler = NetworkHandler()
-		self.networkHandler.networkReceiver.callbackQueue = self.callbackQueue
-		self.networkHandler.networkSender.newOrderQueue = self.newOrderQueue
+		self.initialize_networkhandler()
 		self.update_and_send_elevator_info()
 		self.set_callbacks()
 		self.networkHandler.start()
@@ -33,16 +28,46 @@ class Elevator:
 		self.drive()
 		self.run()
 
+	def initialize_lights(self):
+		"""
+		Turn of all lights on the panel
+		"""
+		for light in OUTPUT.LIGHTS:
+			if light != -1:
+				io.set_bit(light, 0)
+		for order in self.orderQueue.yield_orders(exclude=(ORDERDIR.UP, ORDERDIR.DOWN,)):
+			print order
+			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
+
+
+	def initialize_networkhandler(self):
+		"""
+		Initialize the networkhandler, pass along callbacks
+		"""
+		self.networkHandler = NetworkHandler()
+		self.networkHandler.networkReceiver.callbackQueue = self.callbackQueue
+		self.networkHandler.networkSender.newOrderQueue = self.newOrderQueue
+		self.networkHandler.networkSender.callbackQueue = self.callbackQueue
+		self.networkHandler.networkSender.lostConnectionCallback = self.lost_connection
+		self.networkHandler.networkReceiver.addOrderCallback = self.received_order
+		self.networkHandler.networkReceiver.setLightCallback = self.set_light_callback
+
 	def set_callbacks(self):
+		"""
+		Setting callbacks for threads
+		"""
 		self.set_floor_callbacks()
 		self.set_button_callbacks()
 		self.set_stop_callback()
-		self.set_add_order_callback()
 
 	def run(self):
+		""" 
+		Main thread - block while waiting on something to do 
+		"""
 		while not self.interrupt:
 			func = self.callbackQueue.get()
 			func()
+		self.stop_elevator()
 
 	def stop(self):
 		""" Stops EVERYTHING """
@@ -54,20 +79,31 @@ class Elevator:
 		# self.networkHandler.join()
 		print "# threads: ", active_count()
 
-	def set_add_order_callback(self):
-		self.networkHandler.networkReceiver.addOrderCallback = self.received_order
+	def lost_connection(self):
+		"""
+		Called when networkhandler lost connection
+		"""
+		if self.orderQueue.has_orders():
+			self.orderQueue.delete_all_orders(exclude=ORDERDIR.IN)
+
 
 	def set_stop_callback(self):
-		""" Listen on stop button """
+		""" 
+		Listen on stop button 
+		"""
 		self.signalPoller.add_callback_to_channel(INPUT.STOP, self.stop)
 
 	def set_floor_callbacks(self):
-		""" Decide what will happen when floor changes """
+		""" 
+		Set callbackon on floor changes 
+		"""
 		for floor, channel in enumerate(INPUT.SENSORS):
-			self.signalPoller.add_callback_to_channel(channel, partial(self.floor_indicator_callback, floor))
+			self.signalPoller.add_callback_to_channel(channel, partial(self.floor_reached_callback, floor))
 
 	def set_button_callbacks(self):
-		""" Decide what will happen when button is pressed """
+		""" 
+		Set callback on button pressed 
+		"""
 		for floor, channel in enumerate(INPUT.IN_BUTTONS):
 			self.signalPoller.add_callback_to_channel(channel, partial(self.button_pressed_callback, ORDERDIR.IN, floor))
 
@@ -78,51 +114,69 @@ class Elevator:
 			self.signalPoller.add_callback_to_channel(channel, partial(self.button_pressed_callback, ORDERDIR.DOWN, floor))
 
 
-	def turn_off_lights_in_floor(self, floor):
-		""" Turn of all light in a certain floor 
-		@input floor"""
-		self.set_button_lamp(floor, OUTPUT.UP_LIGHTS, 0)
-		self.set_button_lamp(floor, OUTPUT.DOWN_LIGHTS, 0)
-		self.set_button_lamp(floor, OUTPUT.IN_LIGHTS, 0)
-
-	def set_floor_lights(self, floor):
-		""" Switching the floor indicators
-		@input floor """
-		if floor & 0x01:
+	def set_floor_indicator_light(self):
+		""" 
+		Switching the floor indicators
+		@input floor
+		"""
+		if self.currentFloor & 0x01:
 			io.set_bit(OUTPUT.FLOOR_IND1, 1)
 		else:
 			io.set_bit(OUTPUT.FLOOR_IND1, 0)
-		if floor & 0x02:
+		if self.currentFloor & 0x02:
 			io.set_bit(OUTPUT.FLOOR_IND2, 1)
 		else:
 			io.set_bit(OUTPUT.FLOOR_IND2, 0)
 
 	def received_order(self, order):
-		print 'received order'
+		"""
+		External orders come from NetworkHandler, internal from self
+		"""
+		if order.direction == ORDERDIR.IN:
+			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 		self.orderQueue.add_order(order)
 		self.update_and_send_elevator_info()
 		self.should_drive()
 
-	def floor_indicator_callback(self, floor):
-		""" Handle floor is reached
-		@input floor"""
-		self.set_floor_lights(floor)
+
+	def floor_reached_callback(self, floor):
+		""" 
+		Callback on floor is reached
+		@input floor
+		"""
 		self.currentFloor = floor
+		self.set_floor_indicator_light()
 		self.should_stop()
 
 
 	def button_pressed_callback(self, orderdir, floor):
-		""" Handle button is pressed
-		@input button_type, floor"""
+		""" 
+		Callback on button is pressed
+		@input orderdir, floor
+		"""
 		order = Order(orderdir, floor)
 		if order.direction == ORDERDIR.IN:
 			self.received_order(order)
 			return
 		self.newOrderQueue.put(order)
 
+	def set_light_callback(self, direction, floor, value):
+		if direction == ORDERDIR.UP:
+			lights = OUTPUT.UP_LIGHTS
+		elif direction == ORDERDIR.DOWN:
+			lights = OUTPUT.DOWN_LIGHTS
+		self.set_button_light(floor, lights, value)
+
+
+	def set_button_light(self, floor, lights, value):
+		if lights[floor] != -1:
+			io.set_bit(lights[floor], value)
+
 
 	def find_direction(self):
-		""" Returns the direction in which the elevator should move"""
+		""" 
+		Returns the direction in which the elevator should move
+		"""
 		if self.direction == OUTPUT.MOTOR_UP:
 			for floor in xrange(self.currentFloor+1, INPUT.NUM_FLOORS):
 			   if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
@@ -136,13 +190,18 @@ class Elevator:
 		return OUTPUT.MOTOR_UP
 
 	def drive(self, speed=300):
+		"""
+		Finding direction and starts the elevator
+		"""
 		self.direction = self.find_direction()
 		io.set_bit(OUTPUT.MOTORDIR, self.direction)
 		io.write_analog(OUTPUT.MOTOR, 2048+4*abs(300))
 		self.moving = True
 
 	def stop_elevator(self):
-		""" Stop the elevator """
+		""" 
+		Stops the elevator
+		"""
 		if not self.moving:
 			return
 		if self.direction == OUTPUT.MOTOR_UP:
@@ -155,14 +214,27 @@ class Elevator:
 		self.moving = False
 
 	def open_door(self):
-		print "opening door"
+		"""
+		Opens door and fires a thread with callback in x seconds
+		"""
+		self.set_button_light(self.currentFloor, OUTPUT.UP_LIGHTS, 0)
+		self.set_button_light(self.currentFloor, OUTPUT.DOWN_LIGHTS, 0)
+		self.set_button_light(self.currentFloor, OUTPUT.IN_LIGHTS, 0)
+		io.set_bit(OUTPUT.DOOR_OPEN, 1)
 		self.doorTimer.start()
 
 	def close_door(self):
+		"""
+		Closes door and checking if the elevator should drive
+		"""
 		print "closing door"
+		io.set_bit(OUTPUT.DOOR_OPEN, 0)
 		self.should_drive()
 
 	def should_stop(self):
+		"""
+		Decides whether the elevator should stop when arriving in a certain floor
+		"""
 		if not self.orderQueue.has_orders():
 			self.stop_elevator()
 		elif self.orderQueue.has_order_in_floor(self.direction, self.currentFloor) or self.direction != self.find_direction():
@@ -172,18 +244,19 @@ class Elevator:
 			self.open_door()
 
 	def should_drive(self):
-		print self.orderQueue.orders
-		if self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_DOWN, floor=self.currentFloor):
+		"""
+		Decides whether the elevator should drive after stopping in a floor
+		"""
+		if (self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_DOWN, floor=self.currentFloor)) and not self.moving:
 			self.orderQueue.delete_order_in_floor(self.currentFloor)
+			self.update_and_send_elevator_info()
 			self.open_door()
 		elif self.orderQueue.has_orders() and not self.moving and self.doorTimer.is_finished:
 			self.drive()
 
-	def will_stop(self):
-		self.stop_elevator()
-		self.orderQueue.delete_order_in_floor(self.currentFloor)
-		self.open_door()
-		self.turn_off_lights_in_floor(self.currentFloor)
-
 	def update_and_send_elevator_info(self):
+		"""
+		Updates and sends a copy of its elevatorinfo to the networkHandler
+		"""
 		self.networkHandler.networkSender.elevatorInfo = {'currentFloor': self.currentFloor, 'direction': self.find_direction(), 'orderQueue': self.orderQueue.get_copy()}
+		self.orderQueue.save_to_file()
