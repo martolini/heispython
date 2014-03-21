@@ -28,19 +28,12 @@ class NetworkHandler(Thread):
 		self.networkSender.start()
 		self.networkReceiver.serve_forever()
 
-	def stop(self):
-		""" 
-		Sending interrupt signals and joins subthread
-		"""
-		self.networkSender.interrupt = True
-		self.networkReceiver.interrupt = True
-		print "Sending interrupt"
-		self.networkSender.join()
-
 class NetworkReceiver():
 
 	def __init__(self, callbackQueue=None):
-		self.interrupt = False
+		"""
+		Initializing the networkreciever
+		"""
 		self.callbackQueue = callbackQueue
 		self.addOrderCallback = None
 		self.setLightCallback = None
@@ -56,7 +49,7 @@ class NetworkReceiver():
 
 	def get_ip(self):
 		"""
-		Getting the IP of the current elevator
+		Getting the IP of the current elevator (hackish)
 		@return ip
 		"""
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -70,7 +63,7 @@ class NetworkReceiver():
 		"""
 		self.sock.bind(('', self.MCAST_PORT))
 		self.sock.setblocking(0)
-		while not self.interrupt:
+		while True:
 			r, _, _ = select.select([self.sock], [], [], 0.1)
 			if r:
 				self.handle_message(r[0].recvfrom(1024))
@@ -220,6 +213,9 @@ class NetworkReceiver():
 class NetworkSender(Thread):
 
 	def __init__(self):
+		"""
+		Initializing the networkSender
+		"""
 		super(NetworkSender, self).__init__()
 		self.elevatorInfo = None
 		self.newOrderQueue = None
@@ -253,6 +249,7 @@ class NetworkSender(Thread):
 	def remove_order(self, order):
 		"""
 		Removes a new order after broadcasting it for x seconds
+		@input order
 		"""
 		self.message['newOrders'].remove(order)
 
@@ -261,7 +258,7 @@ class NetworkSender(Thread):
 		Constantly broadcasting information over the network
 		if the connection breaks, it sends a message to the elevator and deleting orders. 
 		"""
-		while not self.interrupt:
+		while not True:
 			sleep(0.1)
 			try:
 				self.sock.sendto(self.build_message(), (self.MCAST_GROUP, self.MCAST_PORT))

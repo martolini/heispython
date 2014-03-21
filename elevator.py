@@ -10,17 +10,20 @@ from Queue import Queue
 
 class Elevator:
 	def __init__(self):
+		"""
+		Initialize variables and starts threads
+		"""
 		self.interrupt = False
-		self.orderQueue = OrderQueue.load_from_file()
-		self.initialize_lights()
-		self.callbackQueue = Queue()
-		self.signalPoller = SignalPoller(self.callbackQueue)
-		self.newOrderQueue = Queue()
-		self.doorTimer = DoorTimer(self.close_door, self.callbackQueue)
 		self.direction = OUTPUT.MOTOR_DOWN
 		self.moving = False
 		self.currentFloor = -1
-		self.initialize_networkhandler()
+
+		self.orderQueue = OrderQueue.load_from_file()
+		self.callbackQueue = Queue()
+		self.newOrderQueue = Queue()
+		self.signalPoller = SignalPoller(self.callbackQueue)
+		self.doorTimer = DoorTimer(self.close_door, self.callbackQueue)
+		self.initialize_networkHandler()
 		self.update_and_send_elevator_info()
 		self.set_callbacks()
 		self.networkHandler.start()
@@ -40,7 +43,7 @@ class Elevator:
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 
 
-	def initialize_networkhandler(self):
+	def initialize_networkHandler(self):
 		"""
 		Initialize the networkhandler, pass along callbacks
 		"""
@@ -72,11 +75,6 @@ class Elevator:
 	def stop(self):
 		""" Stops EVERYTHING """
 		self.interrupt = True
-		self.stop_elevator()
-		# self.signalPoller.interrupt = True
-		# self.signalPoller.join()
-		# self.networkHandler.stop()
-		# self.networkHandler.join()
 		print "# threads: ", active_count()
 
 	def lost_connection(self):
@@ -131,6 +129,7 @@ class Elevator:
 	def received_order(self, order):
 		"""
 		External orders come from NetworkHandler, internal from self
+		@input order
 		"""
 		if order.direction == ORDERDIR.IN:
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
@@ -161,6 +160,10 @@ class Elevator:
 		self.newOrderQueue.put(order)
 
 	def set_light_callback(self, direction, floor, value):
+		"""
+		Setting lights on orders coming from the networkHandler
+		@input direction, floor, value
+		"""
 		if direction == ORDERDIR.UP:
 			lights = OUTPUT.UP_LIGHTS
 		elif direction == ORDERDIR.DOWN:
@@ -169,6 +172,10 @@ class Elevator:
 
 
 	def set_button_light(self, floor, lights, value):
+		"""
+		Sets a button light
+		@input floor, lights, value
+		"""
 		if lights[floor] != -1:
 			io.set_bit(lights[floor], value)
 
@@ -256,7 +263,7 @@ class Elevator:
 
 	def update_and_send_elevator_info(self):
 		"""
-		Updates and sends a copy of its elevatorinfo to the networkHandler
+		Updates and sends a copy of its elevatorinfo to the networkHandler and saving orderQueue to file
 		"""
 		self.networkHandler.networkSender.elevatorInfo = {'currentFloor': self.currentFloor, 'direction': self.find_direction(), 'orderQueue': self.orderQueue.get_copy()}
 		self.orderQueue.save_to_file()
