@@ -258,7 +258,7 @@ class NetworkSender(Thread):
 		Constantly broadcasting information over the network
 		if the connection breaks, it sends a message to the elevator and deleting orders. 
 		"""
-		while not True:
+		while True:
 			sleep(0.1)
 			try:
 				self.sock.sendto(self.build_message(), (self.MCAST_GROUP, self.MCAST_PORT))

@@ -39,7 +39,6 @@ class Elevator:
 			if light != -1:
 				io.set_bit(light, 0)
 		for order in self.orderQueue.yield_orders(exclude=(ORDERDIR.UP, ORDERDIR.DOWN,)):
-			print order
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 
 
@@ -81,8 +80,12 @@ class Elevator:
 		"""
 		Called when networkhandler lost connection
 		"""
+		for light in OUTPUT.UP_LIGHTS + OUTPUT.DOWN_LIGHTS:
+			if light != -1:
+				io.set_bit(light, 0)
 		if self.orderQueue.has_orders():
 			self.orderQueue.delete_all_orders(exclude=ORDERDIR.IN)
+
 
 
 	def set_stop_callback(self):
@@ -134,6 +137,8 @@ class Elevator:
 		if order.direction == ORDERDIR.IN:
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 		self.orderQueue.add_order(order)
+		print 'added order ',
+		print order
 		self.update_and_send_elevator_info()
 		self.should_drive()
 
@@ -228,6 +233,7 @@ class Elevator:
 		self.set_button_light(self.currentFloor, OUTPUT.DOWN_LIGHTS, 0)
 		self.set_button_light(self.currentFloor, OUTPUT.IN_LIGHTS, 0)
 		io.set_bit(OUTPUT.DOOR_OPEN, 1)
+		print 'opening door'
 		self.doorTimer.start()
 
 	def close_door(self):
@@ -254,7 +260,7 @@ class Elevator:
 		"""
 		Decides whether the elevator should drive after stopping in a floor
 		"""
-		if (self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=OUTPUT.MOTOR_DOWN, floor=self.currentFloor)) and not self.moving:
+		if (self.orderQueue.has_order_in_floor(direction=ORDERDIR.UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=ORDERDIR.DOWN, floor=self.currentFloor)) and not self.moving:
 			self.orderQueue.delete_order_in_floor(self.currentFloor)
 			self.update_and_send_elevator_info()
 			self.open_door()
