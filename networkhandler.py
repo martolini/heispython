@@ -10,16 +10,27 @@ from Queue import Queue
 from functools import partial
 from channels import INPUT, OUTPUT
 import time
+import config
 
 class NetworkHandler(Thread):
 	""" 
 	Handling all the network interaction. Receiving messages on its main thread, and spawns a listening thread
 	"""
-	def __init__(self):
+	def __init__(self, callbackQueue, addOrderCallback, setLightCallback, newOrderQueue, lostConnectionCallback, elevatorInfo=None):
 		super(NetworkHandler, self).__init__()
 		self.daemon = True
-		self.networkReceiver = NetworkReceiver()
-		self.networkSender = NetworkSender()	
+		self.networkReceiver = NetworkReceiver(
+			callbackQueue,
+			addOrderCallback,
+			setLightCallback
+			)
+
+		self.networkSender = NetworkSender(
+			elevatorInfo, 
+			newOrderQueue, 
+			callbackQueue, 
+			lostConnectionCallback
+			)	
 
 	def run(self):
 		"""
@@ -30,21 +41,19 @@ class NetworkHandler(Thread):
 
 class NetworkReceiver():
 
-	def __init__(self, callbackQueue=None):
+	def __init__(self, callbackQueue, addOrderCallback, setLightCallback):
 		"""
 		Initializing the networkreciever
 		"""
 		self.callbackQueue = callbackQueue
-		self.addOrderCallback = None
-		self.setLightCallback = None
-		self.globalOrders = {ORDERDIR.DOWN: [False] * INPUT.NUM_FLOORS, ORDERDIR.UP: [False] * INPUT.NUM_FLOORS}
+		self.addOrderCallback = addOrderCallback
+		self.setLightCallback = setLightCallback
+		self.globalOrders = {ORDERDIR.DOWN: [False] * config.NUM_FLOORS, ORDERDIR.UP: [False] * config.NUM_FLOORS}
 		self.ip = self.get_ip()
-		self.MCAST_GROUP = "224.1.1.1"
-		self.MCAST_PORT = 5007
 		self.elevators = {}
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		mreq = struct.pack("4sl", socket.inet_aton(self.MCAST_GROUP), socket.INADDR_ANY)
+		mreq = struct.pack("4sl", socket.inet_aton(config.MCAST_GROUP), socket.INADDR_ANY)
 		self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 	def get_ip(self):
@@ -61,7 +70,7 @@ class NetworkReceiver():
 		""" 
 		Binding to multicast and listening for messages without blocking 
 		"""
-		self.sock.bind(('', self.MCAST_PORT))
+		self.sock.bind(('', config.MCAST_PORT))
 		self.sock.setblocking(0)
 		while True:
 			r, _, _ = select.select([self.sock], [], [], 0.1)
@@ -81,15 +90,15 @@ class NetworkReceiver():
 		direction = int(message['direction'])
 		currentFloor = int(message['currentFloor'])
 		orderQueue = OrderQueue.deserialize(message['orderQueue'])
-		orderweight = 5
-		floorweight = 1
+		orderweight = config.ORDER_WEIGHT
+		floorweight = config.FLOOR_WEIGHT
 		cost = 0
 		if orderQueue.has_order_in_floor(direction=order.direction, floor=order.floor):
 			return -1
 		if not orderQueue.has_orders():
 			return abs(currentFloor-order.floor)
 		if direction == OUTPUT.MOTOR_UP:
-			for floor in range(currentFloor+1, INPUT.NUM_FLOORS):
+			for floor in range(currentFloor+1, config.NUM_FLOORS):
 				if floor == order.floor and direction == order.direction and not orderQueue.has_order_in_floor(direction=ORDERDIR.DOWN, floor=floor):
 					cost+=floorweight
 					break
@@ -129,7 +138,7 @@ class NetworkReceiver():
 			if 'timestamp' not in message:
 				message['timestamp'] = time.time()
 			timestamp = message['timestamp']
-			if time.time() - timestamp > 1:
+			if time.time() - timestamp > config.TIMEOUT_LIMIT:
 				self.distribute_dead_orders(ip)
 				del self.elevators[ip] # BROADCAST ORDERS
 				print 'DELETED ELEVATOR WITH IP %s' % ip
@@ -179,7 +188,7 @@ class NetworkReceiver():
 				print "%s is taking this order with cost %d" % (self.ip, value)
 
 	def handle_global_orders(self):
-		newGlobalOrders = {ORDERDIR.UP: [False]*INPUT.NUM_FLOORS, ORDERDIR.DOWN: [False]*INPUT.NUM_FLOORS}
+		newGlobalOrders = {ORDERDIR.UP: [False]*config.NUM_FLOORS, ORDERDIR.DOWN: [False]*config.NUM_FLOORS}
 		for ip, message in self.elevators.items():
 			orderQueue = OrderQueue.deserialize(message['orderQueue'])
 			for direction, floors in orderQueue.orders.items():
@@ -212,18 +221,16 @@ class NetworkReceiver():
 
 class NetworkSender(Thread):
 
-	def __init__(self):
+	def __init__(self, elevatorInfo, newOrderQueue, callbackQueue, lostConnectionCallback):
 		"""
 		Initializing the networkSender
 		"""
 		super(NetworkSender, self).__init__()
-		self.elevatorInfo = None
-		self.newOrderQueue = None
-		self.callbackQueue = None
-		self.lostConnectionCallback = None
+		self.elevatorInfo = elevatorInfo
+		self.newOrderQueue = newOrderQueue
+		self.callbackQueue = callbackQueue
+		self.lostConnectionCallback = lostConnectionCallback
 		self.message = {'newOrders': []}
-		self.MCAST_GROUP = "224.1.1.1"
-		self.MCAST_PORT = 5007
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 		self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
 		self.interrupt = False
@@ -237,11 +244,11 @@ class NetworkSender(Thread):
 		"""
 		self.message['direction'] = self.elevatorInfo['direction']
 		self.message['currentFloor'] = self.elevatorInfo['currentFloor']
-		self.message['orderQueue'] = OrderQueue.serialize(self.elevatorInfo['orderQueue'])
+		self.message['orderQueue'] = self.elevatorInfo['orderQueue'].serialize()
 		try:
-			order = Order.serialize(self.newOrderQueue.get_nowait())
+			order = self.newOrderQueue.get_nowait().serialize()
 			self.message['newOrders'].append(order)
-			Timer(1.5, self.remove_order, (order, )).start()
+			Timer(1/config.HEARTBEAT_FREQUENCY*config.BROADCAST_HEARTBEATS, self.remove_order, (order, )).start()
 		except:
 			pass
 		return json.dumps(self.message)
@@ -259,19 +266,20 @@ class NetworkSender(Thread):
 		if the connection breaks, it sends a message to the elevator and deleting orders. 
 		"""
 		while True:
-			sleep(0.1)
 			try:
-				self.sock.sendto(self.build_message(), (self.MCAST_GROUP, self.MCAST_PORT))
+				self.sock.sendto(self.build_message(), (config.MCAST_GROUP, config.MCAST_PORT))
 			except:
 				print 'NO NETWORK, deleting orders and sleeping for 5 second'
 				self.callbackQueue.put(self.lostConnectionCallback)
 				while True:
+					# EMPTYING newOrderQueue to discard all new orders
 					try:
 						self.newOrderQueue.get_nowait()
 					except:
 						break
 
 				sleep(5)
+			sleep(1/config.HEARTBEAT_FREQUENCY)
 		print "sender out of loop"
 
 if __name__ == '__main__':

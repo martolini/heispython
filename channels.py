@@ -1,3 +1,4 @@
+import config
 class INPUT:
 	"""
 	Owns all the input ports and values
@@ -32,8 +33,6 @@ class INPUT:
 	SENSORS = [SENSOR1, SENSOR2, SENSOR3, SENSOR4]
 
 	ALL = BUTTONS + SENSORS + [OBSTRUCTION]
-
-	NUM_FLOORS = len(SENSORS)
 
 class OUTPUT:
 	"""

@@ -2,6 +2,7 @@ from signalpoller import SignalPoller
 from channels import INPUT, OUTPUT
 from functools import partial
 from IO import io
+import config
 from models import OrderQueue, Order, DoorTimer, ORDERDIR
 from time import sleep
 from networkhandler import NetworkHandler
@@ -23,6 +24,7 @@ class Elevator:
 		self.newOrderQueue = Queue()
 		self.signalPoller = SignalPoller(self.callbackQueue)
 		self.doorTimer = DoorTimer(self.close_door, self.callbackQueue)
+		self.initialize_lights()
 		self.initialize_networkHandler()
 		self.update_and_send_elevator_info()
 		self.set_callbacks()
@@ -38,7 +40,7 @@ class Elevator:
 		for light in OUTPUT.LIGHTS:
 			if light != -1:
 				io.set_bit(light, 0)
-		for order in self.orderQueue.yield_orders(exclude=(ORDERDIR.UP, ORDERDIR.DOWN,)):
+		for order in self.orderQueue.yield_orders():
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 
 
@@ -46,13 +48,13 @@ class Elevator:
 		"""
 		Initialize the networkhandler, pass along callbacks
 		"""
-		self.networkHandler = NetworkHandler()
-		self.networkHandler.networkReceiver.callbackQueue = self.callbackQueue
-		self.networkHandler.networkSender.newOrderQueue = self.newOrderQueue
-		self.networkHandler.networkSender.callbackQueue = self.callbackQueue
-		self.networkHandler.networkSender.lostConnectionCallback = self.lost_connection
-		self.networkHandler.networkReceiver.addOrderCallback = self.received_order
-		self.networkHandler.networkReceiver.setLightCallback = self.set_light_callback
+		self.networkHandler = NetworkHandler(
+			self.callbackQueue,
+			self.received_order,
+			self.set_light_callback,
+			self.newOrderQueue,
+			self.lost_connection
+			)
 
 	def set_callbacks(self):
 		"""
@@ -190,7 +192,7 @@ class Elevator:
 		Returns the direction in which the elevator should move
 		"""
 		if self.direction == OUTPUT.MOTOR_UP:
-			for floor in xrange(self.currentFloor+1, INPUT.NUM_FLOORS):
+			for floor in xrange(self.currentFloor+1, config.NUM_FLOORS):
 			   if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
 					return OUTPUT.MOTOR_UP
 			return OUTPUT.MOTOR_DOWN
@@ -207,7 +209,7 @@ class Elevator:
 		"""
 		self.direction = self.find_direction()
 		io.set_bit(OUTPUT.MOTORDIR, self.direction)
-		io.write_analog(OUTPUT.MOTOR, 2048+4*abs(300))
+		io.write_analog(OUTPUT.MOTOR, 2048+4*abs(config.SPEED))
 		self.moving = True
 
 	def stop_elevator(self):
@@ -249,12 +251,26 @@ class Elevator:
 		Decides whether the elevator should stop when arriving in a certain floor
 		"""
 		if not self.orderQueue.has_orders():
+			# After initial or if dead.
 			self.stop_elevator()
-		elif self.orderQueue.has_order_in_floor(self.direction, self.currentFloor) or self.direction != self.find_direction():
+		elif self.orderQueue.has_order_in_floor(self.direction, self.currentFloor):
+			# Elevator has order in same floor same direction
 			self.orderQueue.delete_order_in_floor(self.currentFloor)
 			self.update_and_send_elevator_info()
 			self.stop_elevator()
 			self.open_door()
+		elif self.direction != self.find_direction():
+			# Elevator has no order further in its direction
+			if self.orderQueue.has_order_in_floor(not self.direction, self.currentFloor):
+				# It has an order in the opposite direction in the same floor
+				self.orderQueue.delete_order_in_floor(self.currentFloor)
+				self.update_and_send_elevator_info()
+				self.stop_elevator()
+				self.open_door()
+			else:
+				# It ran here on a mistake, probably on startup it checks the closest floor before inner orders
+				self.stop_elevator()
+				self.should_drive()
 
 	def should_drive(self):
 		"""

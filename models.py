@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 import pickle
 from os.path import isfile
+import config
 
 
 class ORDERDIR:
@@ -13,22 +14,28 @@ class ORDERDIR:
 	IN = 2
 
 class DoorTimer:
+	"""
+	Fires a thread that asks elevator to handle door closed in DOOR_OPEN_SECONDS seconds
+	"""
 	def __init__(self, callback, callbackQueue):
 		self.is_finished = True
 		self.callback = callback
 		self.callbackQueue = callbackQueue
-		self.timer = Timer(3, self.set_finished)
+		self.set_timer()
+
+	def set_timer(self):
+		self.timer = Timer(config.DOOR_OPEN_SECONDS, self.set_finished)
 
 	def start(self):
 		if not self.is_finished:
 			self.timer.cancel()
-			self.timer = Timer(3, self.set_finished)
+			self.set_timer()
 		self.is_finished = False
 		self.timer.start()
 
 	def set_finished(self):
 		self.is_finished = True
-		self.timer = Timer(3, self.set_finished)
+		self.set_timer()
 		self.callbackQueue.put(self.callback)
 
 
@@ -38,9 +45,8 @@ class Order:
 		self.direction = direction
 		self.floor = floor
 
-	@staticmethod
-	def serialize(order):
-		return {'direction': order.direction, 'floor': order.floor, 'id': int('%s%s' % (order.floor, order.direction))}
+	def serialize(self):
+		return {'direction': self.direction, 'floor': self.floor, 'id': int('%s%s' % (self.floor, self.direction))}
 
 	@staticmethod
 	def deserialize(object):
@@ -76,7 +82,7 @@ class Panel:
 		""" Set button lamp
 		@input floor, light, value
 		"""
-		if floor == INPUT.NUM_FLOORS-1 and light == OUTPUT.UP_LIGHTS or floor == 0 and light == OUTPUT.DOWN_LIGHTS:
+		if floor == config.NUM_FLOORS-1 and light == OUTPUT.UP_LIGHTS or floor == 0 and light == OUTPUT.DOWN_LIGHTS:
 			return
 		io.set_bit(light[floor], value)
 
@@ -158,15 +164,13 @@ class OrderQueue:
 		if orders:
 			self.orders = orders
 		else:
-			self.orders = {ORDERDIR.UP: [False] * INPUT.NUM_FLOORS, ORDERDIR.DOWN: [False] * INPUT.NUM_FLOORS, ORDERDIR.IN: [False] * INPUT.NUM_FLOORS}
+			self.orders = {ORDERDIR.UP: [False] * config.NUM_FLOORS, ORDERDIR.DOWN: [False] * config.NUM_FLOORS, ORDERDIR.IN: [False] * config.NUM_FLOORS}
 
-
-	@staticmethod
-	def serialize(obj):
+	def serialize(self):
 		"""
 		Serializing itself
 		"""
-		return obj.orders
+		return self.orders
 
 	@staticmethod
 	def deserialize(orders):
@@ -239,8 +243,21 @@ class OrderQueue:
 				if floors[floor]:
 					yield Order(direction, floor)
 
-	def save_to_file(self):
+	def create_backup(self):
+		"""
+		Creates a backup of the elevator containing only the inner orders,
+		the rest is false
+		@return OrderQueue
+		"""
 		orderQueue = self.get_copy()
+		for direction, floors in orderQueue.orders.items():
+			for floor in range(len(floors)):
+				if direction != ORDERDIR.IN and floors[floor]:
+					floors[floor] = False
+		return orderQueue
+
+	def save_to_file(self):
+		orderQueue = self.create_backup()
 		with open('orderqueue.backup', 'w+') as wfile:
 			pickle.dump(orderQueue, wfile)
 	@staticmethod
