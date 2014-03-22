@@ -1,6 +1,6 @@
 Real-time elevator working for N elevators and M floors.
 
---------------------------------------------------------
+======================================================
 
 The project runs on 4 main threads:
 - Elevator (main thread)
@@ -14,9 +14,9 @@ Also, there may exist 2 additional threads:
 - OrderRemover (removes the order from NetworkSender so it only brodcasts it for x seconds)
 These are not daemonized, so the program may wait an additional x seconds to shut down.
 
---------------------------------------------------------
+======================================================
 
-*signalpoller.SignalPoller* is the only module reading from IO
-*elevator.Elevator* is the only module writing to IO
-*schlang* is a comedi library ported to python
+- signalpoller.SignalPoller is the only module reading from IO
+- elevator.Elevator is the only module writing to IO
+- schlang is a comedi library ported to python
 
