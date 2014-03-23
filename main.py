@@ -4,11 +4,6 @@ from channels import INPUT, OUTPUT
 import os
 import signal
 
-def main():
-	global elev
-	elev = Elevator()
 
 if __name__ == "__main__":
-	print os.getpid()
-	main()
-
+	elev = Elevator()

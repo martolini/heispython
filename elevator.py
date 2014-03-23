@@ -22,6 +22,7 @@ class Elevator:
 		self.orderQueue = OrderQueue.load_from_file()
 		self.callbackQueue = Queue()
 		self.newOrderQueue = Queue()
+		self.startedOrderQueue = Queue()
 		self.signalPoller = SignalPoller(self.callbackQueue)
 		self.doorTimer = DoorTimer(self.close_door, self.callbackQueue)
 		self.initialize_lights()
@@ -40,7 +41,7 @@ class Elevator:
 		for light in OUTPUT.LIGHTS:
 			if light != -1:
 				io.set_bit(light, 0)
-		for order in self.orderQueue.yield_orders():
+		for order in self.orderQueue.yield_orders(exclude=(None,)):
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
 
 
@@ -53,6 +54,7 @@ class Elevator:
 			self.received_order,
 			self.set_light_callback,
 			self.newOrderQueue,
+			self.startedOrderQueue,
 			self.lost_connection
 			)
 
@@ -76,7 +78,6 @@ class Elevator:
 	def stop(self):
 		""" Stops EVERYTHING """
 		self.interrupt = True
-		print "# threads: ", active_count()
 
 	def lost_connection(self):
 		"""
@@ -138,9 +139,9 @@ class Elevator:
 		"""
 		if order.direction == ORDERDIR.IN:
 			self.set_button_light(order.floor, OUTPUT.IN_LIGHTS, 1)
+		else:
+			self.startedOrderQueue.put(order)
 		self.orderQueue.add_order(order)
-		print 'added order ',
-		print order
 		self.update_and_send_elevator_info()
 		self.should_drive()
 
@@ -232,14 +233,12 @@ class Elevator:
 		"""
 		self.set_button_light(self.currentFloor, OUTPUT.IN_LIGHTS, 0)
 		io.set_bit(OUTPUT.DOOR_OPEN, 1)
-		print 'opening door'
 		self.doorTimer.start()
 
 	def close_door(self):
 		"""
 		Closes door and checking if the elevator should drive
 		"""
-		print "closing door"
 		io.set_bit(OUTPUT.DOOR_OPEN, 0)
 		self.should_drive()
 
@@ -254,7 +253,6 @@ class Elevator:
 		elif self.orderQueue.has_order_in_floor_and_direction(self.direction, self.currentFloor) or self.orderQueue.has_order_in_floor_and_direction(ORDERDIR.IN, self.currentFloor):
 			# Elevator has order in same floor same direction
 			if self.direction != newDirection:
-				print 'deleting both order'
 				self.orderQueue.delete_order_in_floor(newDirection, self.currentFloor)
 			self.orderQueue.delete_order_in_floor(self.direction, self.currentFloor)
 			self.update_and_send_elevator_info()

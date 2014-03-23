@@ -16,7 +16,7 @@ class NetworkHandler(Thread):
 	""" 
 	Handling all the network interaction. Receiving messages on its main thread, and spawns a listening thread
 	"""
-	def __init__(self, callbackQueue, addOrderCallback, setLightCallback, newOrderQueue, lostConnectionCallback, elevatorInfo=None):
+	def __init__(self, callbackQueue, addOrderCallback, setLightCallback, newOrderQueue, startedOrderQueue, lostConnectionCallback, elevatorInfo=None):
 		super(NetworkHandler, self).__init__()
 		self.daemon = True
 		self.networkReceiver = NetworkReceiver(
@@ -28,13 +28,14 @@ class NetworkHandler(Thread):
 		self.networkSender = NetworkSender(
 			elevatorInfo, 
 			newOrderQueue, 
-			callbackQueue, 
+			callbackQueue,
+			startedOrderQueue, 
 			lostConnectionCallback
 			)	
 
 	def run(self):
 		"""
-		Spawns a senderthread and handling responses its main thread
+		Spawns a senderthread and handling responses on its main thread
 		"""
 		self.networkSender.start()
 		self.networkReceiver.serve_forever()
@@ -51,6 +52,7 @@ class NetworkReceiver():
 		self.globalOrders = {ORDERDIR.DOWN: [False] * config.NUM_FLOORS, ORDERDIR.UP: [False] * config.NUM_FLOORS}
 		self.ip = self.get_ip()
 		self.elevators = {}
+		self.startedOrders = {}
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		mreq = struct.pack("4sl", socket.inet_aton(config.MCAST_GROUP), socket.INADDR_ANY)
@@ -77,7 +79,6 @@ class NetworkReceiver():
 			if r:
 				self.handle_message(r[0].recvfrom(1024))
 			self.handle_timeouts()
-		print "receiver stopped"
 		self.sock.close()
 
 	def determine_cost(self, order, message):
@@ -96,37 +97,12 @@ class NetworkReceiver():
 		if orderQueue.has_order_in_floor_and_direction(order.direction, order.floor):
 			return -1
 		floors = (currentFloor, order.floor)
-		for _order in orderQueue.yield_orders(exclude=None):
+		for _order in orderQueue.yield_orders(exclude=(None,)):
 			if min(currentFloor, _order.floor) <= order.floor <= max(currentFloor, _order.floor):
 				if order.direction != _order.direction:
 					cost += directionweight
 			cost += orderweight
 		return cost+abs(floors[0]-floors[1])*floorweight
-		# return abs(currentFloor-order.floor)+sum(orderweight for x in orderQueue.yield_orders() +5*abs(direction-order.direction))
-		# if not orderQueue.has_orders():
-		# 	return abs(currentFloor-order.floor)
-		# if direction == OUTPUT.MOTOR_UP:
-		# 	for floor in range(currentFloor+1, config.NUM_FLOORS):
-		# 		if floor == order.floor and direction == order.direction:
-		# 			cost += floorweight
-		# 			break
-		# 		cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(direction, floor)
-		# 	if floor != order.floor:
-		# 		cost -= floorweight
-		# 		for floor in range(floor, order.floor, -1):
-		# 			cost += floorweight + orderQueue.has_order_in_floor_and_direction(order.direction, floor)
-		# else:
-		# 	for floor in range(currentFloor-1, -1, -1):
-		# 		if floor == order and direction == order.direction:
-		# 			cost += floorweight
-		# 			break
-		# 		cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(direction, floor)
-		# 	if floor != order.floor:
-		# 		cost -= floorweight
-		# 		for floor in range(floor, currentFloor):
-		# 			cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(order.direction, floor)
-
-		return cost
 
 	def handle_new_elevator(self, ip):
 		"""
@@ -134,6 +110,7 @@ class NetworkReceiver():
 		@input ip
 		"""
 		if ip not in self.elevators and ip != self.ip:
+			self.startedOrders[ip] = []
 			print 'NEW ELEVATOR WITH IP %s DISCOVERED' % ip
 		
 	def handle_timeouts(self):
@@ -147,6 +124,8 @@ class NetworkReceiver():
 			if time.time() - timestamp > config.TIMEOUT_LIMIT:
 				self.distribute_dead_orders(ip)
 				del self.elevators[ip] # BROADCAST ORDERS
+				if ip != self.ip:
+					del self.startedOrders[ip]
 				print 'DELETED ELEVATOR WITH IP %s' % ip
 
 
@@ -157,9 +136,8 @@ class NetworkReceiver():
 		"""
 		for order in OrderQueue.deserialize(self.elevators[dead_ip]['orderQueue']).yield_orders():
 			ip, value = self.get_best_elevator_for_order(order, exclude=dead_ip)
-			if ip == self.ip:
-				self.callbackQueue.put(partial(self.addOrderCallback, order))
-				print "%s is taking over %s order with cost %d" % (self.ip, dead_ip, value)
+			if value >= 0:
+				self.distribute_order(ip, order)
 
 
 
@@ -168,7 +146,7 @@ class NetworkReceiver():
 		Determines the best elevator for a certain order
 		@input order
 		@input exclude (default None)
-		@return (ip, cost) [(-1, -1) if no elevator fits]
+		@return (ip, cost) [(-1, -1) if no elevator fits (none is alive)]
 		"""
 		scores = {}
 		for ip, message in self.elevators.items():
@@ -180,6 +158,29 @@ class NetworkReceiver():
 		print "NO ELEVATORS CAN TAKE THIS ORDER"
 		return -1, -1
 
+	def check_if_order_started(self, ip, order):
+		"""
+		A separate threads runs this to check whether the order is started. If not, it finds a new elevator to handle it.
+		@input ip, order
+		"""
+		if ip in self.startedOrders:
+			if order.serialize() in self.startedOrders[ip]:
+				self.distribute_order(ip, order)
+
+	def distribute_order(self, ip, order):
+		"""
+		If the best ip is itself, it calls the main thread. If not, it adds it to startedOrders and check if it's done.
+		@input ip, order
+		"""
+		if self.ip == ip:
+			self.callbackQueue.put(partial(self.addOrderCallback, order))
+			print "%s is taking this order" % self.ip
+		else:
+			self.startedOrders[ip].append(order.serialize())
+			Timer(1/config.HEARTBEAT_FREQUENCY*config.BROADCAST_HEARTBEATS, self.check_if_order_started, (ip, order)).start()
+
+
+
 	def handle_new_orders(self, ip):
 		"""
 		Handles new orders broadcasted from a certain ip
@@ -188,12 +189,14 @@ class NetworkReceiver():
 		newOrders = self.elevators[ip]['newOrders']
 		for order in newOrders:
 			order = Order.deserialize(order)
-			ip, value = self.get_best_elevator_for_order(order)
-			if self.ip == ip and value >= 0:
-				self.callbackQueue.put(partial(self.addOrderCallback, order))
-				print "%s is taking this order with cost %d" % (self.ip, value)
+			best_ip, value = self.get_best_elevator_for_order(order)
+			if value >= 0:
+				self.distribute_order(best_ip, order)
 
 	def handle_global_orders(self):
+		"""
+		Updates self.globalOrders to keep track of all the elevators in the whole system and settings lights accordingly.
+		"""
 		newGlobalOrders = {ORDERDIR.UP: [False]*config.NUM_FLOORS, ORDERDIR.DOWN: [False]*config.NUM_FLOORS}
 		for ip, message in self.elevators.items():
 			orderQueue = OrderQueue.deserialize(message['orderQueue'])
@@ -208,7 +211,17 @@ class NetworkReceiver():
 					self.callbackQueue.put(partial(self.setLightCallback, direction, floor, floors[floor]))
 		self.globalOrders = newGlobalOrders
 
-
+	def handle_started_orders(self, ip, message):
+		"""
+		Removes the started order if the assigned elevator started the job.
+		@input ip, message
+		"""
+		if ip == self.ip:
+			return
+		startedOrders = message['startedOrders']
+		for order in startedOrders:
+			if order in self.startedOrders[ip]:
+				self.startedOrders[ip].remove(order)
 
 	def handle_message(self, message):
 		"""
@@ -220,6 +233,7 @@ class NetworkReceiver():
 		self.handle_new_elevator(ip)
 		self.elevators[ip] = message
 		self.elevators[ip]['timestamp'] = time.time()
+		self.handle_started_orders(ip, message)
 		self.handle_new_orders(ip)
 		self.handle_global_orders()
 
@@ -227,7 +241,7 @@ class NetworkReceiver():
 
 class NetworkSender(Thread):
 
-	def __init__(self, elevatorInfo, newOrderQueue, callbackQueue, lostConnectionCallback):
+	def __init__(self, elevatorInfo, newOrderQueue, callbackQueue, startedOrderQueue, lostConnectionCallback):
 		"""
 		Initializing the networkSender
 		"""
@@ -235,8 +249,9 @@ class NetworkSender(Thread):
 		self.elevatorInfo = elevatorInfo
 		self.newOrderQueue = newOrderQueue
 		self.callbackQueue = callbackQueue
+		self.startedOrderQueue = startedOrderQueue
 		self.lostConnectionCallback = lostConnectionCallback
-		self.message = {'newOrders': []}
+		self.message = {'newOrders': [], 'startedOrders': []}
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 		self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
 		self.interrupt = False
@@ -257,14 +272,33 @@ class NetworkSender(Thread):
 			Timer(1/config.HEARTBEAT_FREQUENCY*config.BROADCAST_HEARTBEATS, self.remove_order, (order, )).start()
 		except:
 			pass
+		try:
+			startedorder = self.startedOrderQueue.get_nowait().serialize()
+			self.message['startedOrders'].append(startedorder)
+			Timer(1/config.HEARTBEAT_FREQUENCY*config.BROADCAST_HEARTBEATS, self.remove_started_order, (startedorder, )).start()
+		except:
+			pass
 		return json.dumps(self.message)
+
+	def remove_started_order(self, order):
+		"""
+		Removes the started order from the message after broadcasting it for BROADCAST_HEARTBEATS in the configfile.
+		@input order
+		"""
+		try:
+			self.message['startedOrders'].remove(order)
+		except Exception, e:
+			print e
 
 	def remove_order(self, order):
 		"""
 		Removes a new order after broadcasting it for x seconds
 		@input order
 		"""
-		self.message['newOrders'].remove(order)
+		try:
+			self.message['newOrders'].remove(order)
+		except Exception, e:
+			print e
 
 	def run(self):
 		""" 
@@ -275,7 +309,7 @@ class NetworkSender(Thread):
 			try:
 				self.sock.sendto(self.build_message(), (config.MCAST_GROUP, config.MCAST_PORT))
 			except:
-				print 'NO NETWORK, deleting orders and sleeping for 5 second'
+				print 'NO NETWORK, deleting orders and sleeping for %d seconds' % config.RECONNECT_SECONDS
 				self.callbackQueue.put(self.lostConnectionCallback)
 				while True:
 					# EMPTYING newOrderQueue to discard all new orders
@@ -284,9 +318,8 @@ class NetworkSender(Thread):
 					except:
 						break
 
-				sleep(5)
+				sleep(config.RECONNECT_SECONDS)
 			sleep(1/config.HEARTBEAT_FREQUENCY)
-		print "sender out of loop"
 
 if __name__ == '__main__':
 	a = NetworkHandler()
