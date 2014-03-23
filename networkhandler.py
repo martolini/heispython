@@ -96,7 +96,7 @@ class NetworkReceiver():
 		if orderQueue.has_order_in_floor_and_direction(order.direction, order.floor):
 			return -1
 		floors = (currentFloor, order.floor)
-		for _order in orderQueue.yield_orders():
+		for _order in orderQueue.yield_orders(exclude=None):
 			if min(currentFloor, _order.floor) <= order.floor <= max(currentFloor, _order.floor):
 				if order.direction != _order.direction:
 					cost += directionweight

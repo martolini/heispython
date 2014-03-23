@@ -216,13 +216,17 @@ class OrderQueue:
 
 	def has_order_in_floor_and_direction(self, direction, floor):
 		"""
-		Returns if the queue has order in a floor in a certain direction or inner order
+		Returns if the queue has order in a floor in a certain direction
 		@input direction, floor
 		@return true, false
 		"""
 		return self.orders[direction][floor]
 
 	def has_order_in_floor(self, floor):
+		"""
+		Returns if the queue has order in a floor and any direction
+		@return true, false
+		"""
 		for direction, floors in self.orders.items():
 			if floors[floor]:
 				return True
@@ -267,6 +271,7 @@ class OrderQueue:
 		orderQueue = self.create_backup()
 		with open('orderqueue.backup', 'w+') as wfile:
 			pickle.dump(orderQueue, wfile)
+			
 	@staticmethod
 	def load_from_file():
 		if not isfile('orderqueue.backup'):
