@@ -186,19 +186,18 @@ class Elevator:
 		if lights[floor] != -1:
 			io.set_bit(lights[floor], value)
 
-
 	def find_direction(self):
 		""" 
 		Returns the direction in which the elevator should move
 		"""
 		if self.direction == OUTPUT.MOTOR_UP:
 			for floor in xrange(self.currentFloor+1, config.NUM_FLOORS):
-			   if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
+			   if self.orderQueue.has_order_in_floor(floor):
 					return OUTPUT.MOTOR_UP
 			return OUTPUT.MOTOR_DOWN
 		else:
 			for floor in xrange(self.currentFloor-1, -1, -1):
-				if self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_UP, floor) or self.orderQueue.has_order_in_floor(OUTPUT.MOTOR_DOWN, floor):
+				if self.orderQueue.has_order_in_floor(floor):
 					return OUTPUT.MOTOR_DOWN
 			return OUTPUT.MOTOR_UP
 		return OUTPUT.MOTOR_UP
@@ -223,7 +222,7 @@ class Elevator:
 		else:
 			io.set_bit(OUTPUT.MOTORDIR, OUTPUT.MOTOR_UP)
 
-		sleep(0.02)
+		sleep(0.01)
 		io.write_analog(OUTPUT.MOTOR, 2048)
 		self.moving = False
 
@@ -231,8 +230,6 @@ class Elevator:
 		"""
 		Opens door and fires a thread with callback in x seconds
 		"""
-		self.set_button_light(self.currentFloor, OUTPUT.UP_LIGHTS, 0)
-		self.set_button_light(self.currentFloor, OUTPUT.DOWN_LIGHTS, 0)
 		self.set_button_light(self.currentFloor, OUTPUT.IN_LIGHTS, 0)
 		io.set_bit(OUTPUT.DOOR_OPEN, 1)
 		print 'opening door'
@@ -250,20 +247,24 @@ class Elevator:
 		"""
 		Decides whether the elevator should stop when arriving in a certain floor
 		"""
+		newDirection = self.find_direction()
 		if not self.orderQueue.has_orders():
 			# After initial or if dead.
 			self.stop_elevator()
-		elif self.orderQueue.has_order_in_floor(self.direction, self.currentFloor):
+		elif self.orderQueue.has_order_in_floor_and_direction(self.direction, self.currentFloor) or self.orderQueue.has_order_in_floor_and_direction(ORDERDIR.IN, self.currentFloor):
 			# Elevator has order in same floor same direction
-			self.orderQueue.delete_order_in_floor(self.currentFloor)
+			if self.direction != newDirection:
+				print 'deleting both order'
+				self.orderQueue.delete_order_in_floor(newDirection, self.currentFloor)
+			self.orderQueue.delete_order_in_floor(self.direction, self.currentFloor)
 			self.update_and_send_elevator_info()
 			self.stop_elevator()
 			self.open_door()
-		elif self.direction != self.find_direction():
+		elif self.direction != newDirection:
 			# Elevator has no order further in its direction
-			if self.orderQueue.has_order_in_floor(not self.direction, self.currentFloor):
+			if self.orderQueue.has_order_in_floor(self.currentFloor):
 				# It has an order in the opposite direction in the same floor
-				self.orderQueue.delete_order_in_floor(self.currentFloor)
+				self.orderQueue.delete_order_in_floor(not self.direction, self.currentFloor)
 				self.update_and_send_elevator_info()
 				self.stop_elevator()
 				self.open_door()
@@ -276,12 +277,17 @@ class Elevator:
 		"""
 		Decides whether the elevator should drive after stopping in a floor
 		"""
-		if (self.orderQueue.has_order_in_floor(direction=ORDERDIR.UP, floor=self.currentFloor) or self.orderQueue.has_order_in_floor(direction=ORDERDIR.DOWN, floor=self.currentFloor)) and not self.moving:
-			self.orderQueue.delete_order_in_floor(self.currentFloor)
+		if not self.moving:
+			new_direction = self.find_direction()
+			if self.orderQueue.has_order_in_floor_and_direction(self.direction, self.currentFloor) or self.orderQueue.has_order_in_floor_and_direction(ORDERDIR.IN, self.currentFloor):
+				self.orderQueue.delete_order_in_floor(self.direction, self.currentFloor)
+				self.open_door()
+			elif new_direction != self.direction and self.orderQueue.has_order_in_floor_and_direction(not self.direction, self.currentFloor):
+				self.orderQueue.delete_order_in_floor(not self.direction, self.currentFloor)
+				self.open_door()
+			elif self.orderQueue.has_orders() and not self.moving and self.doorTimer.is_finished:
+				self.drive()
 			self.update_and_send_elevator_info()
-			self.open_door()
-		elif self.orderQueue.has_orders() and not self.moving and self.doorTimer.is_finished:
-			self.drive()
 
 	def update_and_send_elevator_info(self):
 		"""

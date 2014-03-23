@@ -76,8 +76,7 @@ class NetworkReceiver():
 			r, _, _ = select.select([self.sock], [], [], 0.1)
 			if r:
 				self.handle_message(r[0].recvfrom(1024))
-			else:
-				self.handle_timeouts()
+			self.handle_timeouts()
 		print "receiver stopped"
 		self.sock.close()
 
@@ -92,33 +91,40 @@ class NetworkReceiver():
 		orderQueue = OrderQueue.deserialize(message['orderQueue'])
 		orderweight = config.ORDER_WEIGHT
 		floorweight = config.FLOOR_WEIGHT
+		directionweight = config.DIRECTION_WEIGHT
 		cost = 0
-		if orderQueue.has_order_in_floor(direction=order.direction, floor=order.floor):
+		if orderQueue.has_order_in_floor_and_direction(order.direction, order.floor):
 			return -1
-		if not orderQueue.has_orders():
-			return abs(currentFloor-order.floor)
-		if direction == OUTPUT.MOTOR_UP:
-			for floor in range(currentFloor+1, config.NUM_FLOORS):
-				if floor == order.floor and direction == order.direction and not orderQueue.has_order_in_floor(direction=ORDERDIR.DOWN, floor=floor):
-					cost+=floorweight
-					break
-				cost += floorweight + orderQueue.has_order_in_floor(direction=direction, floor=floor)*orderweight
-			if floor != order.floor:
-				cost -= floorweight
-				for floor in range(floor, order.floor, -1):
-					cost += floorweight +orderQueue.has_order_in_floor(direction=order.direction, floor=floor)*orderweight
-
-		else:
-			for floor in range(currentFloor-1, -1, -1):
-				if floor == order.floor and direction == order.direction:
-					cost+=floorweight
-					break
-				cost += floorweight + orderQueue.has_order_in_floor(direction=direction, floor=floor)*orderweight
-			if floor != order.floor:
-				cost -= floorweight
-				for floor in range(floor, currentFloor):
-					cost += floorweight + orderQueue.has_order_in_floor(direction=order.direction, floor=floor)*orderweight
-
+		floors = (currentFloor, order.floor)
+		for _order in orderQueue.yield_orders():
+			if min(currentFloor, _order.floor) <= order.floor <= max(currentFloor, _order.floor):
+				if order.direction != _order.direction:
+					cost += directionweight
+			cost += orderweight
+		return cost+abs(floors[0]-floors[1])*floorweight
+		# return abs(currentFloor-order.floor)+sum(orderweight for x in orderQueue.yield_orders() +5*abs(direction-order.direction))
+		# if not orderQueue.has_orders():
+		# 	return abs(currentFloor-order.floor)
+		# if direction == OUTPUT.MOTOR_UP:
+		# 	for floor in range(currentFloor+1, config.NUM_FLOORS):
+		# 		if floor == order.floor and direction == order.direction:
+		# 			cost += floorweight
+		# 			break
+		# 		cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(direction, floor)
+		# 	if floor != order.floor:
+		# 		cost -= floorweight
+		# 		for floor in range(floor, order.floor, -1):
+		# 			cost += floorweight + orderQueue.has_order_in_floor_and_direction(order.direction, floor)
+		# else:
+		# 	for floor in range(currentFloor-1, -1, -1):
+		# 		if floor == order and direction == order.direction:
+		# 			cost += floorweight
+		# 			break
+		# 		cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(direction, floor)
+		# 	if floor != order.floor:
+		# 		cost -= floorweight
+		# 		for floor in range(floor, currentFloor):
+		# 			cost += floorweight + orderweight*orderQueue.has_order_in_floor_and_direction(order.direction, floor)
 
 		return cost
 
@@ -151,7 +157,7 @@ class NetworkReceiver():
 		"""
 		for order in OrderQueue.deserialize(self.elevators[dead_ip]['orderQueue']).yield_orders():
 			ip, value = self.get_best_elevator_for_order(order, exclude=dead_ip)
-			if ip == self.ip and value >= 0:
+			if ip == self.ip:
 				self.callbackQueue.put(partial(self.addOrderCallback, order))
 				print "%s is taking over %s order with cost %d" % (self.ip, dead_ip, value)
 

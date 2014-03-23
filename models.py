@@ -205,21 +205,28 @@ class OrderQueue:
 		"""
 		self.orders[order.direction][order.floor] = True
 
-	def delete_order_in_floor(self, floor):
+	def delete_order_in_floor(self, direction, floor):
 		"""
 		Deleting an order in a certain floor
 		@input floor
 		"""
-		for direction, floors in self.orders.items():
-			floors[floor] = False
+		for _direction, floors in self.orders.items():
+			if _direction in (direction, ORDERDIR.IN):
+				floors[floor] = False
 
-	def has_order_in_floor(self, direction, floor):
+	def has_order_in_floor_and_direction(self, direction, floor):
 		"""
 		Returns if the queue has order in a floor in a certain direction or inner order
 		@input direction, floor
 		@return true, false
 		"""
-		return self.orders[direction][floor] or self.orders[ORDERDIR.IN][floor]
+		return self.orders[direction][floor]
+
+	def has_order_in_floor(self, floor):
+		for direction, floors in self.orders.items():
+			if floors[floor]:
+				return True
+		return False
 
 	def delete_all_orders(self, exclude=None):
 		"""

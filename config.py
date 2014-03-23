@@ -11,7 +11,8 @@ DOOR_OPEN_SECONDS = 3
 
 # Parameters for tuning the cost function
 FLOOR_WEIGHT = 1
-ORDER_WEIGHT = 5
+ORDER_WEIGHT = 2
+DIRECTION_WEIGHT = 5
 
 # How long it should wait before assuming the elevator is dead
 TIMEOUT_LIMIT = 0.5
@@ -23,4 +24,4 @@ BROADCAST_HEARTBEATS = 5
 HEARTBEAT_FREQUENCY = 100.0 #Keep as a float
 
 # Speed of the elevator
-SPEED = 25
+SPEED = 300
