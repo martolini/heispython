@@ -174,7 +174,6 @@ class NetworkReceiver():
 		"""
 		if self.ip == ip:
 			self.callbackQueue.put(partial(self.addOrderCallback, order))
-			print "%s is taking this order" % self.ip
 		else:
 			self.startedOrders[ip].append(order.serialize())
 			Timer(1/config.HEARTBEAT_FREQUENCY*config.BROADCAST_HEARTBEATS, self.check_if_order_started, (ip, order)).start()
