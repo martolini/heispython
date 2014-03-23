@@ -18,7 +18,7 @@ DIRECTION_WEIGHT = 5
 TIMEOUT_LIMIT = 0.5
 
 # For how many heartbeats it should send an order
-BROADCAST_HEARTBEATS = 1
+BROADCAST_HEARTBEATS = 3
 
 # The frequency of sending heartbeats
 HEARTBEAT_FREQUENCY = 100.0 #Keep as a float

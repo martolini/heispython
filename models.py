@@ -174,6 +174,9 @@ class OrderQueue:
 			
 	@staticmethod
 	def load_from_file():
+		"""
+		Loading from file and returning an OrderQueue
+		"""
 		if not isfile('orderqueue.backup'):
 			return OrderQueue()
 		with open('orderqueue.backup', 'r') as rfile:
